@@ -1,6 +1,6 @@
 # ===================== 测试版配置（所有占位符之后替换） =====================
-# 使用 Minimal Mistakes 主题（GitHub Pages 自动构建，本地无需装 Ruby）
-remote_theme: mmistakes/minimal-mistakes
+# 使用 Minimal Mistakes 主题（gem 方式）
+theme: minimal-mistakes-jekyll
 
 # 站点标题（显示在顶部导航栏左侧）
 title: "测试站点"
@@ -13,6 +13,13 @@ url: "https://lithos-cn.github.io"
 
 locale: "zh-CN"
 timezone: "Asia/Shanghai"
+
+plugins:
+  - jekyll-include-cache
+  - jekyll-paginate
+  - jekyll-sitemap
+  - jekyll-gist
+  - jekyll-feed
 
 # ===================== 作者信息（左侧作者栏） =====================
 author:
