@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Synth</title>
+<style>
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
+    color: #e8e8ea;
+    background-color: #171a21;
+    background-image:
+      radial-gradient(640px 360px at 50% -10%, rgba(90,209,205,.07), transparent 60%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+  }
+
+  .synth { width: 100%; max-width: 600px; }
+
+  /* ---------- 预设 ---------- */
+  .presets { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 10px; }
+  .presets button {
+    background: #23272f; border: 1px solid rgba(255,255,255,.1); color: #9aa;
+    font-weight: 700; font-size: 10px; letter-spacing: .5px;
+    padding: 4px 10px; border-radius: 7px; cursor: pointer;
+  }
+  .presets button:hover { color: #e8e8ea; border-color: rgba(255,255,255,.25); }
+  .presets button.active { background: #1f6f6b; border-color: #5ad1cd; color: #eafcfa; }
+
+  /* ---------- 机架 ---------- */
+  #rack { position: relative; }
+
+  #cables { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; overflow: visible; }
+  .cable { fill: none; stroke: #5ad1cd; stroke-width: 2; stroke-linecap: round; filter: drop-shadow(0 0 3px rgba(90,209,205,.5)); }
+  .cable.temp { stroke-dasharray: 5 4; opacity: .8; }
+
+  #grid { display: grid; grid-template-columns: max-content 1fr; gap: 8px 10px; align-items: stretch; }
+  .cell { display: flex; gap: 6px; align-items: stretch; min-width: 0; }
+  .cell.single > .module { flex: 1 1 auto; min-width: 0; }
+  .cell.spread { justify-content: space-between; }
+  #c-scope canvas { flex: 1 1 auto; width: 100%; min-width: 0; }
+  .arrow { align-self: center; color: #3f4654; font-size: 13px; font-weight: 800; user-select: none; padding: 0 1px; }
+
+  .module {
+    position: relative; z-index: 1;
+    background: rgba(34,39,50,.94);
+    border: 1px solid rgba(255,255,255,.09);
+    border-radius: 9px;
+    padding: 6px 8px 7px;
+    display: flex; flex-direction: column; gap: 9px; justify-content: center;
+    box-shadow: 0 6px 18px rgba(0,0,0,.35);
+  }
+  .mod-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+  .mod-head .t { font-weight: 800; font-size: 10px; letter-spacing: 1px; }
+  .mod-head .sub { font-size: 8px; color: #5ad1cd; letter-spacing: 1px; }
+
+  .controls { display: flex; gap: 6px; align-items: flex-end; flex-wrap: wrap; justify-content: space-between; }
+
+  .jacks { display: flex; gap: 10px; flex-wrap: wrap; border-top: 1px dashed rgba(255,255,255,.08); padding-top: 6px; }
+  .jack { display: flex; align-items: center; gap: 5px; font-size: 9px; font-weight: 700; color: #c6cdd8; cursor: pointer; }
+  .jack .dot { width: 11px; height: 11px; border-radius: 50%; background: #1a1d24; border: 2px solid #3a4250; box-shadow: inset 0 0 0 2px #14171e; }
+  .jack.in:hover .dot { border-color: #5ad1cd; }
+  .jack.out .dot { background: #5ad1cd; border-color: #5ad1cd; box-shadow: 0 0 7px rgba(90,209,205,.6); }
+  .jack.connected .dot { background: #5ad1cd; border-color: #5ad1cd; box-shadow: 0 0 7px rgba(90,209,205,.6); }
+
+  #mod-lfo { border-color: rgba(90,209,205,.28); }
+
+  /* ---------- 旋钮 ---------- */
+  .knob { display: flex; flex-direction: column; align-items: center; gap: 2px; user-select: none; width: 56px; }
+  .knob-label { font-size: 8px; letter-spacing: 1px; color: #8b93a3; font-weight: 700; }
+  .knob-value { font-size: 8px; font-weight: 800; color: #e8e8ea; font-variant-numeric: tabular-nums; width: 100%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .knob-svg { cursor: ns-resize; touch-action: none; display: block; }
+  .knob-track { fill: none; stroke: #2a2f3a; stroke-width: 3; stroke-linecap: round; }
+  .knob-val { fill: none; stroke: #5ad1cd; stroke-width: 3; stroke-linecap: round; }
+  .knob-ptr { stroke: #e8e8ea; stroke-width: 2.5; stroke-linecap: round; }
+  .knob-dot { fill: #5ad1cd; }
+
+  /* ---------- 分段 / 波形按钮 ---------- */
+  .seg { display: flex; gap: 4px; flex-wrap: wrap; }
+  .seg button {
+    background: #23272f; border: 1px solid rgba(255,255,255,.1); color: #9aa;
+    font-weight: 700; font-size: 8px; padding: 2px 5px; border-radius: 6px; cursor: pointer;
+  }
+  .seg button.active { background: #1f6f6b; border-color: #5ad1cd; color: #eafcfa; }
+
+  .wavebtn { width: 28px; height: 17px; padding: 2px; display: inline-flex; align-items: center; justify-content: center; }
+  .wavebtn svg { width: 100%; height: 100%; }
+  .wpath { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ---------- 开关 / 门限按钮 ---------- */
+  .switch-wrap { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .switch {
+    display: flex; align-items: center; gap: 5px;
+    background: #23272f; border: 1px solid rgba(255,255,255,.12); border-radius: 11px;
+    padding: 3px 7px; cursor: pointer; font-weight: 800; color: #8b93a3; font-size: 9px;
+  }
+  .switch .sw-dot { width: 7px; height: 7px; border-radius: 50%; background: #555; transition: .15s; }
+  .switch.on { color: #e8e8ea; border-color: rgba(90,209,205,.5); }
+  .switch.on .sw-dot { background: #5ad1cd; box-shadow: 0 0 5px #5ad1cd; }
+
+  .gate {
+    background: #23272f; border: 1px solid rgba(255,255,255,.12); border-radius: 7px;
+    color: #e8e8ea; font-weight: 800; font-size: 8px; letter-spacing: 1px;
+    padding: 5px 9px; cursor: pointer; user-select: none; touch-action: none;
+  }
+  .gate.held { background: #1f6f6b; border-color: #5ad1cd; box-shadow: 0 0 10px rgba(90,209,205,.35); }
+
+  /* ---------- 示波器 ---------- */
+  #scope { width: 100%; min-height: 84px; display: block; border-radius: 7px; background: #0c0e13; position: relative; z-index: 1; }
+</style>
+</head>
+<body>
+<div class="synth">
+  <div class="presets" id="presets"></div>
+  <div id="rack">
+    <svg id="cables"></svg>
+    <div id="grid">
+      <div class="cell single" id="c-env"></div>
+      <div class="cell single" id="c-lfo"></div>
+      <div class="cell" id="c-osc-filter"></div>
+      <div class="cell" id="c-drive"></div>
+      <div class="cell spread" id="c-delay-out"></div>
+      <div class="cell" id="c-scope"><canvas id="scope"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ================= 配置：按需增减模块（博客分段时修改 chain 即可） ================= */
+  const CONFIG = {
+    chain: ["osc", "filter", "env", "drive", "delay", "out"],
+    lfo: true,
+    presets: true
+  };
+
+  /* ================= 基础工具 ================= */
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const $ = (id) => document.getElementById(id);
+  const rack = $("rack"), svg = $("cables"), scope = $("scope");
+
+  const WAVE_PATHS = {
+    sine:     "M1 7 Q 4 1 7 7 Q 10 13 13 7 Q 16 1 19 7 Q 22 13 25 7",
+    sawtooth: "M1 12 L 7 2 L 7 12 L 13 2 L 13 12 L 19 2 L 19 12 L 25 2",
+    square:   "M1 2 H 9 V 12 H 17 V 2 H 25",
+    triangle: "M1 7 L 7 2 L 13 12 L 19 2 L 25 7"
+  };
+
+  function polar12(cx, cy, r, deg) {
+    const a = deg * Math.PI / 180;
+    return [cx + r * Math.sin(a), cy - r * Math.cos(a)];
+  }
+  function arcPath(cx, cy, r, start, end) {
+    const [sx, sy] = polar12(cx, cy, r, start);
+    const [ex, ey] = polar12(cx, cy, r, end);
+    const large = (end - start) > 180 ? 1 : 0;
+    return "M " + sx + " " + sy + " A " + r + " " + r + " 0 " + large + " 1 " + ex + " " + ey;
+  }
+  function freqToNote(f) {
+    const midi = Math.round(69 + 12 * Math.log2(f / 440));
+    const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    return names[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);
+  }
+  function fmtTime(v) { return v < 1 ? Math.round(v * 1000) + "ms" : v.toFixed(2) + "s"; }
+
+  /* ================= 音频引擎 ================= */
+  let AC = null, analyser, comp;
+  const nodes = {};        // 模块音频节点
+  const knobs = {};        // key -> { set(v) }
+  const segments = {};     // key -> { set(v) }
+  const switches = {};     // key -> { set(v) }
+  const lfoTargets = [];   // { key, el, param, scale, label }
+  const targetByKey = {};
+
+  let lfoOsc = null, lfoTargetGains = {};
+  let lfoEnabled = false, lfoDepth = 0.3;
+
+  function initAudio() {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = AC.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.85;
+
+    comp = AC.createDynamicsCompressor();
+    comp.threshold.value = -12; comp.knee.value = 20; comp.ratio.value = 8;
+    comp.attack.value = 0.003; comp.release.value = 0.25;
+    analyser.connect(comp);
+    comp.connect(AC.destination);
+  }
+  function ensureAudio() {
+    if (!AC) initAudio();
+    if (AC.state === "suspended") AC.resume();
+  }
+
+  /* ================= UI 组件 ================= */
+  function makeKnob(mount, opts) {
+    const { label, key, min, max, value, log = false, fmt, onChange, def = value } = opts;
+    const toNorm = (v) => log ? Math.log(v / min) / Math.log(max / min) : (v - min) / (max - min);
+    const fromNorm = (n) => log ? min * Math.pow(max / min, n) : min + n * (max - min);
+
+    const el = document.createElement("div");
+    el.className = "knob";
+    const labelEl = document.createElement("div");
+    labelEl.className = "knob-label"; labelEl.textContent = label;
+    const svgEl = document.createElementNS(SVGNS, "svg");
+    svgEl.setAttribute("viewBox", "0 0 60 60");
+    svgEl.setAttribute("width", "36"); svgEl.setAttribute("height", "36");
+    svgEl.setAttribute("class", "knob-svg");
+    const track = document.createElementNS(SVGNS, "path");
+    track.setAttribute("class", "knob-track"); track.setAttribute("d", arcPath(30, 30, 21, -135, 135));
+    const val = document.createElementNS(SVGNS, "path");
+    val.setAttribute("class", "knob-val");
+    const ptr = document.createElementNS(SVGNS, "line");
+    ptr.setAttribute("class", "knob-ptr");
+    const dot = document.createElementNS(SVGNS, "circle");
+    dot.setAttribute("class", "knob-dot"); dot.setAttribute("cx", "30"); dot.setAttribute("cy", "30"); dot.setAttribute("r", "2.6");
+    svgEl.append(track, val, ptr, dot);
+    const valEl = document.createElement("div");
+    valEl.className = "knob-value";
+    el.append(labelEl, svgEl, valEl);
+    mount.appendChild(el);
+
+    let cur = value, dragging = false, startY = 0, startNorm = 0;
+
+    function render() {
+      const norm = toNorm(cur);
+      const ang = -135 + norm * 270;
+      val.setAttribute("d", norm > 0.002 ? arcPath(30, 30, 21, -135, ang) : "");
+      const [px, py] = polar12(30, 30, 14, ang);
+      ptr.setAttribute("x1", "30"); ptr.setAttribute("y1", "30");
+      ptr.setAttribute("x2", px); ptr.setAttribute("y2", py);
+      valEl.textContent = fmt(cur);
+    }
+    function set(v) { cur = v; render(); onChange(v); }
+
+    svgEl.addEventListener("pointerdown", function (e) {
+      e.preventDefault(); ensureAudio();
+      dragging = true; svgEl.setPointerCapture(e.pointerId);
+      startY = e.clientY; startNorm = toNorm(cur);
+    });
+    svgEl.addEventListener("pointermove", function (e) {
+      if (!dragging) return;
+      const dy = startY - e.clientY;
+      const fine = e.shiftKey ? 0.2 : 1;
+      let n = startNorm + (dy / 200) * fine;
+      n = Math.max(0, Math.min(1, n));
+      cur = fromNorm(n); render(); onChange(cur);
+    });
+    function end() { dragging = false; }
+    svgEl.addEventListener("pointerup", end);
+    svgEl.addEventListener("pointercancel", end);
+    svgEl.addEventListener("dblclick", function () { set(def); });
+
+    render();
+    if (key) knobs[key] = { set };
+    return { set };
+  }
+
+  function makeSegment(mount, options, value, onChange, key) {
+    const el = document.createElement("div");
+    el.className = "seg";
+    const items = options.map(function (o) {
+      const b = document.createElement("button");
+      b.textContent = o.label; b.dataset.v = o.value;
+      if (o.value === value) b.classList.add("active");
+      b.addEventListener("click", function () { set(o.value); });
+      el.appendChild(b);
+      return { v: o.value, b: b };
+    });
+    mount.appendChild(el);
+    function set(v) { items.forEach(function (it) { it.b.classList.toggle("active", it.v === v); }); onChange(v); }
+    if (key) segments[key] = { set: set };
+    return el;
+  }
+
+  function makeWaveSeg(mount, options, value, onChange, key) {
+    const el = document.createElement("div");
+    el.className = "seg";
+    const items = options.map(function (o) {
+      const b = document.createElement("button");
+      b.className = "wavebtn"; b.title = o.label;
+      if (o.value === value) b.classList.add("active");
+      const s = document.createElementNS(SVGNS, "svg");
+      s.setAttribute("viewBox", "0 0 26 14");
+      const p = document.createElementNS(SVGNS, "path");
+      p.setAttribute("d", WAVE_PATHS[o.value]); p.setAttribute("class", "wpath");
+      s.appendChild(p); b.appendChild(s);
+      b.addEventListener("click", function () { set(o.value); });
+      el.appendChild(b);
+      return { v: o.value, b: b };
+    });
+    mount.appendChild(el);
+    function set(v) { items.forEach(function (it) { it.b.classList.toggle("active", it.v === v); }); onChange(v); }
+    if (key) segments[key] = { set: set };
+    return el;
+  }
+
+  function makeSwitch(mount, opts) {
+    const { label, key, on, onText = "ON", offText = "OFF", onChange } = opts;
+    const wrap = document.createElement("div");
+    wrap.className = "switch-wrap";
+    const lab = document.createElement("div");
+    lab.className = "knob-label"; lab.textContent = label;
+    const sw = document.createElement("button");
+    sw.className = "switch" + (on ? " on" : "");
+    const dot = document.createElement("span"); dot.className = "sw-dot";
+    const txt = document.createElement("span"); txt.textContent = on ? onText : offText;
+    sw.append(dot, txt); wrap.append(lab, sw);
+    mount.appendChild(wrap);
+    let state = on;
+    function set(v) { state = v; sw.classList.toggle("on", v); txt.textContent = v ? onText : offText; onChange(v); }
+    sw.addEventListener("click", function () { ensureAudio(); set(!state); });
+    if (key) switches[key] = { set: set };
+    return wrap;
+  }
+
+  function makeModuleCard(title, sub) {
+    const el = document.createElement("div");
+    el.className = "module";
+    const head = document.createElement("div");
+    head.className = "mod-head";
+    const t = document.createElement("span"); t.className = "t"; t.textContent = title;
+    const s = document.createElement("span"); s.className = "sub"; s.textContent = sub || "";
+    head.append(t, s);
+    el.appendChild(head);
+    return el;
+  }
+  function addControls(card) {
+    const c = document.createElement("div"); c.className = "controls";
+    card.appendChild(c); return c;
+  }
+  function addJacks(card, targets) {
+    const row = document.createElement("div"); row.className = "jacks";
+    for (const t of targets) {
+      const j = document.createElement("div");
+      j.className = "jack in"; j.id = "jack-" + t.key;
+      const dot = document.createElement("span"); dot.className = "dot";
+      const lab = document.createElement("span"); lab.textContent = t.label;
+      j.append(dot, lab);
+      j.addEventListener("click", function () { setConnection(t.key, !connections.has(t.key)); });
+      row.appendChild(j);
+      t.el = j;
+      lfoTargets.push(t);
+      targetByKey[t.key] = t;
+    }
+    card.appendChild(row);
+  }
+
+  /* ================= 模块构建器 ================= */
+  let oscOn = true;
+  function buildOsc() {
+    const card = makeModuleCard("OSC", "VCO");
+    makeWaveSeg(card, [
+      { label: "Saw", value: "sawtooth" }, { label: "Square", value: "square" },
+      { label: "Triangle", value: "triangle" }, { label: "Sine", value: "sine" }
+    ], "sawtooth", function (v) { nodes.osc.type = v; }, "oscWave");
+
+    const c = addControls(card);
+    makeKnob(c, { label: "FREQ", key: "freq", min: 110, max: 880, value: 220, log: true,
+      fmt: function (v) { return Math.round(v) + "Hz · " + freqToNote(v); },
+      onChange: function (v) { nodes.osc.frequency.value = v; } });
+    makeKnob(c, { label: "LEVEL", key: "level", min: 0, max: 1, value: 0.5,
+      fmt: function (v) { return Math.round(v * 100) + "%"; },
+      onChange: function (v) { nodes.oscLevel.gain.value = v; } });
+    makeSwitch(c, { label: "POWER", key: "oscOn", on: true,
+      onChange: function (on) { oscOn = on; nodes.oscGate.gain.value = on ? 1 : 0; } });
+
+    addJacks(card, [
+      { key: "pitch", label: "PITCH", param: null, scale: 30 },
+      { key: "level", label: "LEVEL", param: null, scale: 0.4 }
+    ]);
+
+    nodes.osc = AC.createOscillator();
+    nodes.osc.type = "sawtooth"; nodes.osc.frequency.value = 220;
+    nodes.oscLevel = AC.createGain(); nodes.oscLevel.gain.value = 0.5;
+    nodes.oscGate = AC.createGain(); nodes.oscGate.gain.value = 1;
+    nodes.osc.connect(nodes.oscLevel);
+    nodes.oscLevel.connect(nodes.oscGate);
+    nodes.osc.start();
+
+    // 回填 LFO 目标参数
+    targetByKey.pitch.param = nodes.osc.frequency;
+    targetByKey.level.param = nodes.oscLevel.gain;
+
+    return { card: card, input: null, output: nodes.oscGate };
+  }
+
+  function buildFilter() {
+    const card = makeModuleCard("FILTER", "VCF");
+    makeSegment(card, [
+      { label: "LP", value: "lowpass" }, { label: "HP", value: "highpass" },
+      { label: "BP", value: "bandpass" }, { label: "NOTCH", value: "notch" }
+    ], "lowpass", function (v) { nodes.filter.type = v; }, "filterType");
+
+    const c = addControls(card);
+    makeKnob(c, { label: "CUTOFF", key: "cutoff", min: 20, max: 20000, value: 2000, log: true,
+      fmt: function (v) { return v < 1000 ? Math.round(v) + "Hz" : (v / 1000).toFixed(1) + "kHz"; },
+      onChange: function (v) { nodes.filter.frequency.value = v; } });
+    makeKnob(c, { label: "Q", key: "q", min: 0.1, max: 20, value: 1, log: true,
+      fmt: function (v) { return v.toFixed(2); },
+      onChange: function (v) { nodes.filter.Q.value = v; } });
+
+    addJacks(card, [{ key: "cutoff", label: "CUTOFF", param: null, scale: 4000 }]);
+
+    nodes.filter = AC.createBiquadFilter();
+    nodes.filter.type = "lowpass"; nodes.filter.frequency.value = 2000; nodes.filter.Q.value = 1;
+    targetByKey.cutoff.param = nodes.filter.frequency;
+
+    return { card: card, input: nodes.filter, output: nodes.filter };
+  }
+
+  /* AMP ENV（ADSR） */
+  let envA = 0.01, envD = 0.2, envS = 0.7, envR = 0.3;
+  let singleHeld = false, holdLatched = false, wasGated = false;
+  function buildEnv() {
+    const card = makeModuleCard("AMP ENV", "ADSR");
+    const c = addControls(card);
+    makeKnob(c, { label: "A", key: "a", min: 0.001, max: 2, value: 0.01, log: true,
+      fmt: fmtTime, onChange: function (v) { envA = v; } });
+    makeKnob(c, { label: "D", key: "d", min: 0.01, max: 2, value: 0.2, log: true,
+      fmt: fmtTime, onChange: function (v) { envD = v; } });
+    makeKnob(c, { label: "S", key: "s", min: 0, max: 1, value: 0.7,
+      fmt: function (v) { return Math.round(v * 100) + "%"; }, onChange: function (v) { envS = v; } });
+    makeKnob(c, { label: "R", key: "r", min: 0.01, max: 3, value: 0.3, log: true,
+      fmt: fmtTime, onChange: function (v) { envR = v; } });
+
+    const single = document.createElement("button");
+    single.className = "gate"; single.textContent = "SINGLE";
+    const hold = document.createElement("button");
+    hold.className = "gate"; hold.textContent = "HOLD";
+    c.appendChild(single); c.appendChild(hold);
+
+    nodes.vca = AC.createGain();
+    nodes.vca.gain.value = 0;
+
+    function gateOn() {
+      const t = AC.currentTime, g = nodes.vca.gain;
+      g.cancelScheduledValues(t);
+      g.setValueAtTime(g.value, t);
+      g.linearRampToValueAtTime(1, t + envA);
+      g.setTargetAtTime(envS, t + envA, envD / 3);
+    }
+    function gateOff() {
+      const t = AC.currentTime, g = nodes.vca.gain;
+      g.cancelScheduledValues(t);
+      g.setValueAtTime(g.value, t);
+      g.setTargetAtTime(0, t, envR / 3);
+    }
+    function refreshGate() {
+      const gated = singleHeld || holdLatched;
+      if (gated && !wasGated) gateOn();
+      else if (!gated && wasGated) gateOff();
+      wasGated = gated;
+    }
+
+    function releaseSingle() { singleHeld = false; single.classList.remove("held"); refreshGate(); }
+    single.addEventListener("pointerdown", function (e) { e.preventDefault(); ensureAudio(); singleHeld = true; single.classList.add("held"); refreshGate(); });
+    single.addEventListener("pointerup", releaseSingle);
+    single.addEventListener("pointercancel", releaseSingle);
+    single.addEventListener("pointerleave", releaseSingle);
+    hold.addEventListener("click", function () { ensureAudio(); holdLatched = !holdLatched; hold.classList.toggle("held", holdLatched); refreshGate(); });
+
+    return { card: card, input: nodes.vca, output: nodes.vca };
+  }
+
+  let driveAmount = 0, driveBypass = false;
+  function buildDrive() {
+    const card = makeModuleCard("DRIVE", "OD");
+    const c = addControls(card);
+    makeKnob(c, { label: "DRIVE", key: "drive", min: 0, max: 1, value: 0,
+      fmt: function (v) { return Math.round(v * 100) + "%"; },
+      onChange: function (v) { driveAmount = v; updateDrive(); } });
+    makeSwitch(c, { label: "BYPASS", key: "driveBypass", on: false, onText: "BYP", offText: "ON",
+      onChange: function (b) { driveBypass = b; updateDrive(); } });
+
+    nodes.driveIn = AC.createGain();
+    nodes.driveWet = AC.createGain(); nodes.driveWet.gain.value = 1;
+    nodes.driveDry = AC.createGain(); nodes.driveDry.gain.value = 0;
+    nodes.shaper = AC.createWaveShaper();
+    nodes.drivePost = AC.createGain();
+    nodes.driveOut = AC.createGain();
+    nodes.driveIn.connect(nodes.driveWet);
+    nodes.driveWet.connect(nodes.shaper);
+    nodes.shaper.connect(nodes.drivePost);
+    nodes.drivePost.connect(nodes.driveOut);
+    nodes.driveIn.connect(nodes.driveDry);
+    nodes.driveDry.connect(nodes.driveOut);
+    updateDrive();
+
+    return { card: card, input: nodes.driveIn, output: nodes.driveOut };
+  }
+  function updateDrive() {
+    if (!nodes.shaper) return;
+    const n = 2048, curve = new Float32Array(n);
+    if (driveBypass || driveAmount < 0.01) {
+      for (let i = 0; i < n; i++) curve[i] = i / (n / 2) - 1;
+      nodes.drivePost.gain.value = 1;
+    } else {
+      const pre = 1 + driveAmount * 12;
+      for (let i = 0; i < n; i++) { const x = i / (n / 2) - 1; curve[i] = Math.tanh(pre * x); }
+      nodes.drivePost.gain.value = 0.85;
+    }
+    nodes.shaper.curve = curve;
+    if (driveBypass) { nodes.driveWet.gain.value = 0; nodes.driveDry.gain.value = 1; }
+    else { nodes.driveWet.gain.value = 1; nodes.driveDry.gain.value = 0; }
+  }
+
+  let dTime = 0.25, dFb = 0.35, dMix = 0.2, delayBypass = false;
+  function buildDelay() {
+    const card = makeModuleCard("DELAY", "FX");
+    const c = addControls(card);
+    makeKnob(c, { label: "TIME", key: "dtime", min: 0.05, max: 1, value: 0.25,
+      fmt: fmtTime, onChange: function (v) { dTime = v; nodes.delayNode.delayTime.value = v; } });
+    makeKnob(c, { label: "FB", key: "dfb", min: 0, max: 0.9, value: 0.35,
+      fmt: function (v) { return Math.round(v * 100) + "%"; }, onChange: function (v) { dFb = v; nodes.delayFb.gain.value = v; } });
+    makeKnob(c, { label: "MIX", key: "dmix", min: 0, max: 1, value: 0.2,
+      fmt: function (v) { return Math.round(v * 100) + "%"; }, onChange: function (v) { dMix = v; updateDelay(); } });
+    makeSwitch(c, { label: "BYPASS", key: "delayBypass", on: false, onText: "BYP", offText: "ON",
+      onChange: function (b) { delayBypass = b; updateDelay(); } });
+
+    nodes.delayIn = AC.createGain();
+    nodes.delayDry = AC.createGain();
+    nodes.delayNode = AC.createDelay(2.0); nodes.delayNode.delayTime.value = dTime;
+    nodes.delayFb = AC.createGain(); nodes.delayFb.gain.value = dFb;
+    nodes.delayWet = AC.createGain();
+    nodes.delayOut = AC.createGain();
+    nodes.delayIn.connect(nodes.delayDry); nodes.delayDry.connect(nodes.delayOut);
+    nodes.delayIn.connect(nodes.delayNode);
+    nodes.delayNode.connect(nodes.delayFb); nodes.delayFb.connect(nodes.delayNode);
+    nodes.delayNode.connect(nodes.delayWet); nodes.delayWet.connect(nodes.delayOut);
+    updateDelay();
+
+    return { card: card, input: nodes.delayIn, output: nodes.delayOut };
+  }
+  function updateDelay() {
+    if (!nodes.delayDry) return;
+    if (delayBypass) { nodes.delayWet.gain.value = 0; nodes.delayDry.gain.value = 1; }
+    else { nodes.delayDry.gain.value = 1 - dMix; nodes.delayWet.gain.value = dMix; }
+  }
+
+  function buildOut() {
+    const card = makeModuleCard("OUT", "MAIN");
+    const c = addControls(card);
+    makeKnob(c, { label: "VOL", key: "vol", min: 0, max: 1, value: 0.6,
+      fmt: function (v) { return Math.round(v * 100) + "%"; },
+      onChange: function (v) { nodes.master.gain.value = v; } });
+    nodes.master = AC.createGain(); nodes.master.gain.value = 0.6;
+    return { card: card, input: nodes.master, output: nodes.master };
+  }
+
+  const BUILDERS = { osc: buildOsc, filter: buildFilter, env: buildEnv, drive: buildDrive, delay: buildDelay, out: buildOut };
+
+  /* ================= 跳线（LFO 输出 → 目标） ================= */
+  let connections = new Set();
+
+  function setConnection(key, connected) {
+    if (connections.has(key) === connected) return;
+    if (connected) connections.add(key); else connections.delete(key);
+    updateLfoGains(); updateCables(); updateJackLights();
+  }
+  function updateJackLights() {
+    for (const t of lfoTargets) t.el.classList.toggle("connected", connections.has(t.key));
+  }
+
+  function rackRect() { return rack.getBoundingClientRect(); }
+  function jackPoint(el, rr) {
+    const d = el.querySelector(".dot").getBoundingClientRect();
+    return { x: d.left + d.width / 2 - rr.left, y: d.top + d.height / 2 - rr.top };
+  }
+  function cablePath(a, b) {
+    const oy = Math.max(26, Math.abs(b.y - a.y) * 0.5);
+    return "M " + a.x + " " + a.y + " C " + a.x + " " + (a.y + oy) + ", " + b.x + " " + (b.y - oy) + ", " + b.x + " " + b.y;
+  }
+  function addCable(a, b, temp) {
+    const p = document.createElementNS(SVGNS, "path");
+    p.setAttribute("d", cablePath(a, b));
+    p.setAttribute("class", temp ? "cable temp" : "cable");
+    svg.appendChild(p);
+  }
+  function updateCables() {
+    const rr = rackRect();
+    svg.setAttribute("width", rr.width); svg.setAttribute("height", rr.height);
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    const lfoEl = $("jack-lfo-out");
+    if (!lfoEl) return;
+    const out = jackPoint(lfoEl, rr);
+    for (const k of connections) {
+      const t = targetByKey[k];
+      if (t && t.el) addCable(out, jackPoint(t.el, rr), false);
+    }
+    if (draggingCable && dragPos) addCable(out, dragPos, true);
+  }
+
+  let draggingCable = false, dragPos = null;
+  function hitTarget(x, y) {
+    for (const k in targetByKey) {
+      const r = targetByKey[k].el.getBoundingClientRect();
+      if (x >= r.left - 10 && x <= r.right + 10 && y >= r.top - 10 && y <= r.bottom + 10) return k;
+    }
+    return null;
+  }
+
+  function buildLfo() {
+    const card = makeModuleCard("LFO", "MOD");
+    card.id = "mod-lfo";
+
+    makeWaveSeg(card, [
+      { label: "Sine", value: "sine" }, { label: "Triangle", value: "triangle" },
+      { label: "Square", value: "square" }, { label: "Saw", value: "sawtooth" }
+    ], "sine", function (v) { lfoOsc.type = v; }, "lfoWave");
+
+    const c = addControls(card);
+    makeKnob(c, { label: "RATE", key: "lrate", min: 0.1, max: 20, value: 4, log: true,
+      fmt: function (v) { return v.toFixed(1) + "Hz"; },
+      onChange: function (v) { lfoOsc.frequency.value = v; } });
+    makeKnob(c, { label: "DEPTH", key: "ldepth", min: 0, max: 1, value: 0.3,
+      fmt: function (v) { return Math.round(v * 100) + "%"; },
+      onChange: function (v) { lfoDepth = v; updateLfoGains(); } });
+    makeSwitch(c, { label: "LFO", key: "lfoOn", on: false,
+      onChange: function (on) { lfoEnabled = on; updateLfoGains(); } });
+
+    const row = document.createElement("div"); row.className = "jacks";
+    const out = document.createElement("div"); out.className = "jack out"; out.id = "jack-lfo-out";
+    const dot = document.createElement("span"); dot.className = "dot";
+    const lab = document.createElement("span"); lab.textContent = "OUT";
+    out.append(dot, lab); row.appendChild(out); card.appendChild(row);
+
+    lfoOsc = AC.createOscillator();
+    lfoOsc.type = "sine"; lfoOsc.frequency.value = 4;
+    lfoOsc.start();
+
+    lfoTargetGains = {};
+    for (const t of lfoTargets) {
+      const g = AC.createGain(); g.gain.value = 0;
+      lfoOsc.connect(g); g.connect(t.param);
+      lfoTargetGains[t.key] = g;
+    }
+
+    $("c-lfo").appendChild(card);
+
+    out.addEventListener("pointerdown", function (e) {
+      e.preventDefault(); ensureAudio();
+      draggingCable = true; out.setPointerCapture(e.pointerId);
+      updateCables();
+    });
+    out.addEventListener("pointermove", function (e) {
+      if (!draggingCable) return;
+      const rr = rackRect();
+      dragPos = { x: e.clientX - rr.left, y: e.clientY - rr.top };
+      updateCables();
+    });
+    out.addEventListener("pointerup", function (e) {
+      if (!draggingCable) return;
+      draggingCable = false;
+      const t = hitTarget(e.clientX, e.clientY);
+      if (t) setConnection(t, !connections.has(t));
+      dragPos = null; updateCables();
+    });
+    out.addEventListener("pointercancel", function () { draggingCable = false; dragPos = null; updateCables(); });
+  }
+
+  function updateLfoGains() {
+    for (const t of lfoTargets) {
+      const g = lfoTargetGains[t.key];
+      if (g) g.gain.value = (lfoEnabled && connections.has(t.key)) ? lfoDepth * t.scale : 0;
+    }
+  }
+
+  /* ================= 预设 ================= */
+  const PRESETS = {
+    init: {
+      knobs: { freq: 220, level: 0.5, cutoff: 2000, q: 1, a: 0.01, d: 0.2, s: 0.7, r: 0.3, drive: 0, dtime: 0.25, dfb: 0.35, dmix: 0.2, vol: 0.6, lrate: 4, ldepth: 0.3 },
+      segs: { oscWave: "sawtooth", filterType: "lowpass", lfoWave: "sine" },
+      sw: { oscOn: true, lfoOn: false, driveBypass: false, delayBypass: false },
+      lfo: { pitch: false, level: false, cutoff: false }
+    },
+    bass: {
+      knobs: { freq: 110, level: 0.75, cutoff: 420, q: 2, a: 0.005, d: 0.12, s: 0.75, r: 0.08, drive: 0.25, dtime: 0.2, dfb: 0.2, dmix: 0.08, vol: 0.7, lrate: 4, ldepth: 0.3 },
+      segs: { oscWave: "sawtooth", filterType: "lowpass", lfoWave: "sine" },
+      sw: { oscOn: true, lfoOn: false, driveBypass: false, delayBypass: false },
+      lfo: { pitch: false, level: false, cutoff: false }
+    },
+    pad: {
+      knobs: { freq: 220, level: 0.5, cutoff: 900, q: 0.6, a: 0.8, d: 0.4, s: 0.8, r: 1.2, drive: 0.05, dtime: 0.5, dfb: 0.5, dmix: 0.35, vol: 0.55, lrate: 0.5, ldepth: 0.2 },
+      segs: { oscWave: "sawtooth", filterType: "lowpass", lfoWave: "sine" },
+      sw: { oscOn: true, lfoOn: true, driveBypass: false, delayBypass: false },
+      lfo: { pitch: false, level: false, cutoff: true }
+    },
+    lead: {
+      knobs: { freq: 440, level: 0.5, cutoff: 3500, q: 3, a: 0.01, d: 0.25, s: 0.6, r: 0.2, drive: 0.15, dtime: 0.3, dfb: 0.3, dmix: 0.25, vol: 0.6, lrate: 6, ldepth: 0.2 },
+      segs: { oscWave: "sawtooth", filterType: "lowpass", lfoWave: "sine" },
+      sw: { oscOn: true, lfoOn: true, driveBypass: false, delayBypass: false },
+      lfo: { pitch: true, level: false, cutoff: false }
+    },
+    pluck: {
+      knobs: { freq: 330, level: 0.6, cutoff: 5000, q: 4, a: 0.002, d: 0.15, s: 0, r: 0.2, drive: 0.1, dtime: 0.3, dfb: 0.25, dmix: 0.15, vol: 0.6, lrate: 4, ldepth: 0.3 },
+      segs: { oscWave: "sawtooth", filterType: "lowpass", lfoWave: "sine" },
+      sw: { oscOn: true, lfoOn: false, driveBypass: false, delayBypass: false },
+      lfo: { pitch: false, level: false, cutoff: false }
+    }
+  };
+
+  function applyPreset(name) {
+    const p = PRESETS[name];
+    if (!p) return;
+    for (const k in p.knobs) if (knobs[k]) knobs[k].set(p.knobs[k]);
+    for (const k in p.segs) if (segments[k]) segments[k].set(p.segs[k]);
+    for (const k in p.sw) if (switches[k]) switches[k].set(p.sw[k]);
+    connections.clear();
+    for (const k in p.lfo) if (p.lfo[k]) connections.add(k);
+    updateLfoGains(); updateCables(); updateJackLights();
+
+    const btns = $("presets").querySelectorAll("button");
+    btns.forEach(function (b) { b.classList.toggle("active", b.dataset.p === name); });
+  }
+
+  function buildPresets() {
+    const order = ["init", "bass", "pad", "lead", "pluck"];
+    const labels = { init: "INIT", bass: "BASS", pad: "PAD", lead: "LEAD", pluck: "PLUCK" };
+    for (const name of order) {
+      const b = document.createElement("button");
+      b.textContent = labels[name]; b.dataset.p = name;
+      if (name === "init") b.classList.add("active");
+      b.addEventListener("click", function () { ensureAudio(); applyPreset(name); });
+      $("presets").appendChild(b);
+    }
+  }
+
+  /* ================= 组装与主循环 ================= */
+  function buildAll() {
+    initAudio();
+    const built = {};
+    for (const id of CONFIG.chain) built[id] = BUILDERS[id]();
+
+    // 音频连线（按信号顺序）
+    let prev = null;
+    for (const id of CONFIG.chain) {
+      const m = built[id];
+      if (prev && m.input) prev.output.connect(m.input);
+      prev = m;
+    }
+    if (prev) prev.output.connect(analyser);
+
+    // 视觉布局：2×3 网格（左列 max-content、右列 1fr），行内等高、每行等宽
+    function arrow() {
+      const ar = document.createElement("div"); ar.className = "arrow"; ar.textContent = "▶";
+      return ar;
+    }
+    if (built.env) $("c-env").appendChild(built.env.card);
+
+    if (built.osc && built.filter) {
+      $("c-osc-filter").appendChild(built.osc.card);
+      $("c-osc-filter").appendChild(arrow());
+      $("c-osc-filter").appendChild(built.filter.card);
+    }
+    if (built.drive) {
+      $("c-drive").appendChild(arrow());
+      $("c-drive").appendChild(built.drive.card);
+      built.drive.card.style.flex = "1";
+    }
+    if (built.delay && built.out) {
+      $("c-delay-out").appendChild(built.delay.card);
+      $("c-delay-out").appendChild(arrow());
+      $("c-delay-out").appendChild(built.out.card);
+    }
+
+    if (CONFIG.lfo) buildLfo();
+    if (CONFIG.presets) buildPresets();
+    applyPreset("init");
+  }
+
+  function sizeScope() {
+    const dpr = window.devicePixelRatio || 1;
+    scope.width = Math.max(1, Math.floor(scope.clientWidth * dpr));
+    scope.height = Math.max(1, Math.floor(scope.clientHeight * dpr));
+  }
+
+  function drawScope() {
+    if (!AC || scope.width < 2) return;
+    const ctx = scope.getContext("2d");
+    const w = scope.width, h = scope.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "rgba(8,10,14,.92)";
+    ctx.fillRect(0, 0, w, h);
+
+    const waveH = Math.floor(h * 0.55), midY = waveH / 2;
+    const time = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(time);
+    const n = time.length;
+    // 触发：锁定上升过零点
+    let trig = 0;
+    for (let i = 1; i < n; i++) {
+      if (time[i - 1] < 0 && time[i] >= 0) { trig = i; break; }
+    }
+    // 按基频截取整数个周期，首尾相位一致，消除尾段抖动
+    const sr = AC.sampleRate;
+    const f = (nodes.osc && nodes.osc.frequency) ? nodes.osc.frequency.value : 440;
+    const period = f > 1 ? sr / f : n;
+    let drawLen = n;
+    if (period >= 4 && period < n) {
+      drawLen = Math.max(4, Math.floor(Math.floor(n / period) * period));
+    }
+    ctx.strokeStyle = "#5ad1cd";
+    ctx.lineWidth = Math.max(1.2, 1.5 * (window.devicePixelRatio || 1));
+    ctx.beginPath();
+    for (let k = 0; k < drawLen; k++) {
+      const i = (trig + k) % n;
+      const x = (k / (drawLen - 1)) * w;
+      const y = midY - time[i] * (midY - 6);
+      if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(255,255,255,.08)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, waveH); ctx.lineTo(w, waveH); ctx.stroke();
+
+    const freq = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(freq);
+    const specTop = waveH, specH = h - specTop, bins = freq.length;
+    const drawBins = 120, group = bins / drawBins, barW = w / drawBins;
+    ctx.fillStyle = "#ffb347";
+    for (let i = 0; i < drawBins; i++) {
+      const start = Math.floor(i * group), end = Math.max(start + 1, Math.floor((i + 1) * group));
+      let sum = 0;
+      for (let j = start; j < end; j++) sum += freq[j];
+      const bh = (sum / (end - start) / 255) * specH;
+      ctx.fillRect(i * barW, specTop + specH - bh, Math.max(1, barW - 0.5), bh);
+    }
+  }
+
+  buildAll();
+  document.addEventListener("pointerdown", function () { ensureAudio(); });
+  sizeScope();
+  window.addEventListener("resize", function () { sizeScope(); updateCables(); });
+  if (window.ResizeObserver) new ResizeObserver(function () { sizeScope(); }).observe(scope);
+  if (window.ResizeObserver) new ResizeObserver(function () { updateCables(); }).observe(rack);
+  updateCables();
+
+  function mainLoop() {
+    drawScope();
+    requestAnimationFrame(mainLoop);
+  }
+  requestAnimationFrame(mainLoop);
+})();
+</script>
+</body>
+</html>

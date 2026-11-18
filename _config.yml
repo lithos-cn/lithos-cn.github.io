@@ -1,0 +1,54 @@
+# ===================== 测试版配置（所有占位符之后替换） =====================
+# 使用 Minimal Mistakes 主题（GitHub Pages 自动构建，本地无需装 Ruby）
+remote_theme: mmistakes/minimal-mistakes
+
+# 站点标题（显示在顶部导航栏左侧）
+title: "测试站点"
+name: "测试用户"
+description: "一句话简介（测试）"
+
+url: "https://lithos-cn.github.io"
+# 如果你保留仓库名 lithos.github.io（不改成 lithos-cn.github.io），需要额外加一行：
+# baseurl: "/lithos.github.io"
+
+locale: "zh-CN"
+timezone: "Asia/Shanghai"
+
+# ===================== 作者信息（左侧作者栏） =====================
+author:
+  name: "测试用户"
+  avatar: "/images/profile.svg"     # 测试用占位头像，正式版换成 /images/profile.jpg
+  bio: "这里是简介，正式版再改"
+  location: "地球"
+  links:
+    - label: "GitHub"
+      icon: "fab fa-github"
+      url: "https://github.com/"
+    - label: "Email"
+      icon: "fas fa-envelope"
+      url: "mailto:test@example.com"
+
+# ===================== 默认布局 =====================
+defaults:
+  - scope:
+      path: ""
+      type: posts
+    values:
+      layout: single
+      author_profile: true
+      read_time: true
+      comments: false
+      share: true
+      related: true
+  - scope:
+      path: ""
+    values:
+      layout: single
+      author_profile: true
+
+# ===================== 博客列表（首页分页） =====================
+paginate: 5
+paginate_path: /page:num/
+
+# ===================== 其它 =====================
+toc: true
