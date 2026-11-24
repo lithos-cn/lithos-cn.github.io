@@ -28,6 +28,9 @@ default_lang: "zh"
 exclude_from_localization: ["assets", "images", "javascript", "css", "sitemap.xml", "feed.xml"]
 parallel_localization: true
 
+# 让 Jekyll 处理 _pages 目录下的页面（Minimal Mistakes 的约定）
+include: ["_pages"]
+
 # ===================== 作者信息（左侧作者栏） =====================
 author:
   name: "测试用户"
