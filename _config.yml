@@ -20,6 +20,13 @@ plugins:
   - jekyll-sitemap
   - jekyll-gist
   - jekyll-feed
+  - jekyll-polyglot
+
+# 多语言（中英切换）
+languages: ["zh", "en"]
+default_lang: "zh"
+exclude_from_localization: ["assets", "images", "javascript", "css", "sitemap.xml", "feed.xml"]
+parallel_localization: true
 
 # ===================== 作者信息（左侧作者栏） =====================
 author:

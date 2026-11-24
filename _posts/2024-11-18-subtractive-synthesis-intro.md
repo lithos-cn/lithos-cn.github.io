@@ -3,6 +3,8 @@ title: 减法合成器入门：从振荡器到效果器
 description: 从振荡器、滤波器、包络、LFO 到效果器，用一台可交互的合成器讲清减法合成的原理与历史。
 date: 2024-11-18 12:00:00 +0800
 permalink: /subtractive-synthesis-intro/
+lang: zh
+page_id: subtractive-synthesis-intro
 categories: [音乐, 合成器]
 tags: [合成器, 减法合成, 音乐制作, 音频, 教程]
 pin: false
